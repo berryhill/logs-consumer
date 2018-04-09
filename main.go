@@ -2,21 +2,20 @@ package main
 
 import (
     "encoding/json"
-    "flag"
     "fmt"
     "log"
     "net/http"
     "os"
     "os/signal"
     "strconv"
+    "strings"
     "time"
 
     "github.com/garyburd/redigo/redis"
+    "github.com/labstack/echo"
+    "github.com/labstack/echo/middleware"
     "github.com/streadway/amqp"
 )
-
-var addr = flag.String(
-    "addr", ":5050", "http service address")
 
 func main() {
 
@@ -29,7 +28,7 @@ func main() {
     defer ch.Close()
 
     q, err := ch.QueueDeclare(
-        "ping",
+        "logs",
         false,
         false,
         false,
@@ -62,7 +61,51 @@ func main() {
                 if string(d.Body) == "" {
                     //fmt.Println(d.Body)
                 } else {
-                    log.Printf("Received a message: %s", d.Body)
+                    message := new(Message)
+                    err := json.Unmarshal(d.Body, message)
+                    if err != nil {
+                        log.Printf("Error marshalling json", err)
+                    }
+
+                    if message.Type == "logs" {
+                        if strings.Contains(
+                            message.Payload.(string), "Mh/s") == true {
+                            if strings.Contains(
+                                message.Payload.(string),
+                                "Total Speed") == true {
+
+                                messageArray := strings.Split(
+                                    message.Payload.(string), " ")
+                                for i := range messageArray {
+                                    if messageArray[i] == "Speed:" {
+                                        UpdateTotalHashRate(messageArray[i+1])
+                                    }
+                                }
+                            } else if strings.Contains(
+                                message.Payload.(string), "GPU") {
+                                messageArray := strings.Split(
+                                    message.Payload.(string), " ")
+
+                                numGpus := strings.Count(
+                                    message.Payload.(string), "GPU")
+
+                                var gpus []*Gpu
+                                for i := 0; i < numGpus; i++ {
+                                    gpu := new(Gpu)
+                                    gpu.Id = i
+                                    gpu.HashRate = messageArray[2 + (i * 3)]
+                                    gpus = append(gpus, gpu)
+                                }
+
+                                UpdateGpus(gpus)
+                            }
+                        } else if strings.Contains(
+                            message.Payload.(string), "t=") == true {
+                            //fmt.Println(message.Payload.(string))
+                        }
+                        //go UpdatePing(message.Payload.(map[string]interface{}))
+                    }
+
                     msgCount++
                 }
             case <-signals:
@@ -73,7 +116,6 @@ func main() {
     }()
 
     go StartHttpServer()
-
     fmt.Println("Up and running")
 
     <-doneCh
@@ -81,22 +123,38 @@ func main() {
 
 }
 
+type Message struct {
+    SenderId 		string					`json:"mac"`
+    UserHash 		string					`json:"mac"`
+    Type 			string					`json:"type"`
+    Payload 		interface{}				`json:"payload"`
+}
+
 func StartHttpServer() {
-    http.HandleFunc("/", Handler)
-    http.HandleFunc("/create", CreateRig)
-    log.Fatal(http.ListenAndServe(*addr, nil))
+
+    e := echo.New()
+    e.Use(middleware.CORS())
+
+    e.Use(middleware.Logger())
+    e.Use(middleware.Recover())
+
+    e.GET("/", Handler)
+    e.GET("/create", CreateRig)
+    e.Logger.Fatal(e.Start(":5052"))
 }
 
-func Handler(w http.ResponseWriter, r *http.Request) {
+func Handler(c echo.Context) error {
 
-    m := Find("100")
-    json.NewEncoder(w).Encode(m)
+    m := Find("1")
+    return c.JSON(http.StatusOK, m)
 }
 
-func CreateRig(w http.ResponseWriter, r *http.Request) {
+func CreateRig(c echo.Context) error {
 
     rig := new(Rig)
     Create(*rig)
+
+    return nil
 }
 
 type Rig struct {
@@ -104,17 +162,18 @@ type Rig struct {
     AccountId 		string 			`json:"account_id"`
     Timestamp 		time.Time		`json:"timestamp"`
     LastPing		Ping 			`json:"last_ping"`
+    TotalHashRate   string          `json:"total_hash_rate"`
+    Gpus            []*Gpu          `json:"gpus"`
 }
 
-var currentPostId int
-var currentUserId int
+type Gpu struct {
+    Id              int             `json:"id"`
+    HashRate        string          `json:"hash_rate"`
+}
 
 func Create(r Rig) {
 
-    currentPostId += 1
-    currentUserId += 1
-
-    r.Id = 100
+    r.Id = 1
     r.Timestamp = time.Now()
     c := RedisConnect()
     defer c.Close()
@@ -154,28 +213,43 @@ func HandleError(err error) {
 
 func RedisConnect() redis.Conn {
 
-    c, err := redis.Dial("tcp", "redis-master:6379")
+    c, err := redis.Dial("tcp", "localhost:6379")
     HandleError(err)
     return c
 }
 
-func UpdatePing(payload []byte) {
+func UpdateRig(r Rig) {
 
-    ping := new(Ping)
-    err := json.Unmarshal(payload, ping)
-    if err != nil {
-        HandleError(err)
-    }
+    r.Timestamp = time.Now()
+    c := RedisConnect()
+    defer c.Close()
 
-    rig := Find("100")
-    rig.LastPing = *ping
+    b, err := json.Marshal(r)
+    HandleError(err)
 
-    Create(rig)
+    reply, err := c.Do(
+        "SET", "machine:" + strconv.Itoa(r.Id), b)
+    HandleError(err)
+
+    fmt.Println("GET ", reply)
+}
+
+func UpdateTotalHashRate(hashRate string) {
+
+    rig := Find("1")
+    rig.TotalHashRate = hashRate
+
+    UpdateRig(rig)
+}
+
+func UpdateGpus(gpus []*Gpu) {
+    rig := Find("1")
+    rig.Gpus = gpus
+
+    UpdateRig(rig)
 }
 
 type Ping struct {
-    Id 			string			`json:"id"`
-    Service 	string			`json:"service"`
     Time 		time.Time		`json:"time"`
 }
 
@@ -205,6 +279,7 @@ type Ping struct {
 //}
 
 func failOnError(err error, msg string) {
+
     if err != nil {
         log.Fatalf("%s: %s", msg, err)
     }

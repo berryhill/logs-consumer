@@ -11,7 +11,7 @@ env:
   global:
     - GOOGLE_APPLICATION_CREDENTIALS-~/.gcloud-service-key.json
     - PROJECT_NAME=miner-191101
-    - CLUSTER_NAME=cluster-1	us-
+    - CLUSTER_NAME=miner-stage
     - CLOUDSDK_COMPUTE_ZONE=us-central1-a
 
 before_install:

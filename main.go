@@ -3,6 +3,7 @@ package main
 import (
     "encoding/json"
     "fmt"
+    "flag"
     "log"
     "net/http"
     "os"
@@ -17,9 +18,23 @@ import (
     "github.com/streadway/amqp"
 )
 
+var rabbitAddr = flag.String(
+    "addr",
+    "amqp://guest:guest@localhost:5672/",
+    "rabbitmq service address",
+)
+
+var redisAddr = flag.String(
+    "redis",
+    "localhost:6379",
+    "redis service address",
+)
+
 func main() {
 
-    conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
+    flag.Parse()
+
+    conn, err := amqp.Dial(*rabbitAddr)
     failOnError(err, "Failed to connect to RabbitMQ")
     defer conn.Close()
 
@@ -120,7 +135,6 @@ func main() {
 
     <-doneCh
     fmt.Println("Processed", msgCount, "messages")
-    fmt.Println("test")
 
 }
 
@@ -214,7 +228,7 @@ func HandleError(err error) {
 
 func RedisConnect() redis.Conn {
 
-    c, err := redis.Dial("tcp", "localhost:6379")
+    c, err := redis.Dial("tcp", *redisAddr)
     HandleError(err)
     return c
 }

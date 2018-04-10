@@ -120,6 +120,7 @@ func main() {
 
     <-doneCh
     fmt.Println("Processed", msgCount, "messages")
+    fmt.Println("test")
 
 }
 

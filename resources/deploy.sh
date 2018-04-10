@@ -3,8 +3,8 @@
 set -e
 
 echo "Build Docker"
-docker build -t gcr.io/${PROJECT_NAME}/ping-consumer:$TRAVIS_COMMIT .
-docker tag gcr.io/${PROJECT_NAME}/ping-consumer:$TRAVIS_COMMIT gcr.io/${PROJECT_NAME}/ping-consumer:latest
+docker build -t gcr.io/${PROJECT_NAME}/logs-consumer:$TRAVIS_COMMIT .
+docker tag gcr.io/${PROJECT_NAME}/logs-consumer:$TRAVIS_COMMIT gcr.io/${PROJECT_NAME}/logs-consumer:latest
 
 echo "Authenticate Google Cloud Engine"
 echo $GCLOUD_SERVICE_KEY | base64 --decode -i > ${HOME}/gcloud-service-key.json
@@ -17,13 +17,13 @@ gcloud --quiet config set compute/zone ${CLOUDSDK_COMPUTE_ZONE}
 gcloud --quiet container clusters get-credentials $CLUSTER_NAME
 
 echo "Push Docker Image"
-gcloud docker -- push gcr.io/${PROJECT_NAME}/ping-consumer
+gcloud docker -- push gcr.io/${PROJECT_NAME}/logs-consumer
 
-yes | gcloud beta container images add-tag gcr.io/${PROJECT_NAME}/ping-consumer:$TRAVIS_COMMIT gcr.io/${PROJECT_NAME}/ping-consumer:latest
+yes | gcloud beta container images add-tag gcr.io/${PROJECT_NAME}/logs-consumer:$TRAVIS_COMMIT gcr.io/${PROJECT_NAME}/logs-consumer:latest
 
 echo "Configure Kubernetes"
 kubectl config view
 kubectl config current-context
 
 echo "Deploy"
-kubectl set image deployment/ping-consumer ping-consumer=gcr.io/${PROJECT_NAME}/ping-consumer:$TRAVIS_COMMIT
+kubectl set image deployment/logs-consumer logs-consumer=gcr.io/${PROJECT_NAME}/logs-consumer:$TRAVIS_COMMIT

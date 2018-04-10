@@ -1,0 +1,22 @@
+apiVersion: apps/v1beta2 # before 1.9
+kind: Deployment
+metadata:
+  name: logs-consumer
+spec:
+  selector:
+    matchLabels:
+      app: logs-consumer
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: logs-consumer
+    spec:
+      containers:
+      - name: logs-consumer
+        image: matthewberryhill/logs-consumer:pre
+        env:
+        - name: RABBIT_ADDR
+          value: "amqp://ltvdoacc:urQws_KDYLQbcK0mOidy48snnJQMsr7Z@wombat.rmq.cloudamqp.com/ltvdoacc"
+        - name: REDIS_ADDR
+          value: "redis-master:6379"
